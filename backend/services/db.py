@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any, List
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+from .schema import DatasetDB
 
 load_dotenv()
 
@@ -32,22 +33,15 @@ class Database:
     ) -> None:
         """
         Insert a new dataset record.
-        
-        Args:
-            dataset_id: Unique identifier for the dataset
-            meta: Dataset metadata (containing rows, columns, dtypes, summary)
-            description: Optional dataset description
-            s3_key: S3 key for the dataset file
-            filename: Original filename of the dataset
-            created_at: Creation timestamp
-            updated_at: Last update timestamp (same as created_at on insert)
+        The 'meta' dict should contain 'rows', 'columns', 'dtypes', 'summary'.
         """
-        data = {
+        # Prepare data for Supabase, ensuring it matches DatasetDB fields implicitly
+        data_to_insert = {
             "id": dataset_id,
             "rows": meta.get("rows"),
             "columns": meta.get("columns"),
             "dtypes": meta.get("dtypes"),
-            "summary": meta.get("summary"),
+            "summary": meta.get("summary"), # Ensure this is JSON serializable
             "description": description,
             "s3_key": s3_key,
             "filename": filename,
@@ -55,11 +49,11 @@ class Database:
             "updated_at": updated_at.isoformat()
         }
         
-        result = self.supabase.table("datasets").insert(data).execute()
+        result = self.supabase.table("datasets").insert(data_to_insert).execute()
         if hasattr(result, 'error') and result.error:
             raise Exception(f"Error inserting dataset: {result.error}")
 
-    async def get_meta(self, dataset_id: str) -> Optional[Dict[str, Any]]:
+    async def get_meta(self, dataset_id: str) -> Optional[DatasetDB]:
         """
         Get metadata for a specific dataset.
         
@@ -67,9 +61,9 @@ class Database:
             dataset_id: Unique identifier for the dataset
             
         Returns:
-            Dataset metadata if found, None otherwise
+            DatasetDB model instance if found, None otherwise
         """
-        result = self.supabase.table("datasets").select("*").eq("id", dataset_id).execute()
+        result = self.supabase.table("datasets").select("*").eq("id", dataset_id).limit(1).execute() # Use limit(1) for single record
         
         if hasattr(result, 'error') and result.error:
             raise Exception(f"Error retrieving dataset: {result.error}")
@@ -77,13 +71,20 @@ class Database:
         if not result.data:
             return None
             
-        return result.data[0]
+        # Parse the dictionary from Supabase into our Pydantic model
+        try:
+            return DatasetDB(**result.data[0])
+        except Exception as e: # Handle potential Pydantic validation errors
+            # Log this error, as it indicates a mismatch between DB data and schema.py
+            # For now, re-raise or return None, depending on desired strictness.
+            print(f"Error parsing data from DB into DatasetDB model: {e}") # Basic logging
+            raise Exception(f"Data mismatch for dataset {dataset_id}: {e}")
 
     async def list_datasets(
         self, 
         skip: int = 0, 
         limit: int = 10
-    ) -> List[Dict[str, Any]]:
+    ) -> List[DatasetDB]:
         """
         List all datasets with pagination.
         
@@ -92,7 +93,7 @@ class Database:
             limit: Maximum number of records to return
             
         Returns:
-            List of dataset records
+            List of DatasetDB model instances
         """
         result = self.supabase.table("datasets")\
             .select("*")\
@@ -102,8 +103,16 @@ class Database:
             
         if hasattr(result, 'error') and result.error:
             raise Exception(f"Error listing datasets: {result.error}")
-            
-        return result.data
+        
+        datasets = []
+        for item_data in result.data:
+            try:
+                datasets.append(DatasetDB(**item_data))
+            except Exception as e: # Handle potential Pydantic validation errors per item
+                # Log this error. You might choose to skip this item or raise an error.
+                print(f"Error parsing item data from DB into DatasetDB model: {e}") # Basic logging
+                # Continue to next item for now, or raise
+        return datasets
 
     async def delete_dataset(self, dataset_id: str) -> None:
         """
@@ -124,7 +133,7 @@ class Database:
         self,
         dataset_id: str,
         description: Optional[str] = None,
-        meta: Optional[Dict[str, Any]] = None
+        meta: Optional[Dict[str, Any]] = None # 'meta' here is a partial dict for updates
     ) -> None:
         """
         Update a dataset record.
@@ -132,7 +141,7 @@ class Database:
         Args:
             dataset_id: Unique identifier for the dataset
             description: New description (optional)
-            meta: New metadata (optional)
+            meta: Partial dictionary with metadata fields to update (e.g., rows, columns)
         """
         update_data = {
             "updated_at": datetime.now(datetime.UTC).isoformat()
@@ -142,11 +151,11 @@ class Database:
             update_data["description"] = description
             
         if meta is not None:
-            # Ensure all expected meta fields are updated if meta is provided
+            # Update specific fields from the meta dictionary if they are provided
             if "rows" in meta: update_data["rows"] = meta["rows"]
             if "columns" in meta: update_data["columns"] = meta["columns"]
             if "dtypes" in meta: update_data["dtypes"] = meta["dtypes"]
-            if "summary" in meta: update_data["summary"] = meta["summary"]
+            if "summary" in meta: update_data["summary"] = meta["summary"] # Ensure summary is JSON serializable
             
         result = self.supabase.table("datasets")\
             .update(update_data)\
