@@ -25,26 +25,34 @@ class Database:
         dataset_id: str, 
         meta: Dict[str, Any], 
         description: Optional[str],
-        created_at: datetime
+        s3_key: str,
+        filename: str,
+        created_at: datetime,
+        updated_at: datetime
     ) -> None:
         """
         Insert a new dataset record.
         
         Args:
             dataset_id: Unique identifier for the dataset
-            meta: Dataset metadata
+            meta: Dataset metadata (containing rows, columns, dtypes, summary)
             description: Optional dataset description
+            s3_key: S3 key for the dataset file
+            filename: Original filename of the dataset
             created_at: Creation timestamp
+            updated_at: Last update timestamp (same as created_at on insert)
         """
         data = {
             "id": dataset_id,
-            "rows": meta["rows"],
-            "columns": meta["columns"],
-            "dtypes": meta["dtypes"],
-            "summary": meta["summary"],
+            "rows": meta.get("rows"),
+            "columns": meta.get("columns"),
+            "dtypes": meta.get("dtypes"),
+            "summary": meta.get("summary"),
             "description": description,
+            "s3_key": s3_key,
+            "filename": filename,
             "created_at": created_at.isoformat(),
-            "updated_at": created_at.isoformat()
+            "updated_at": updated_at.isoformat()
         }
         
         result = self.supabase.table("datasets").insert(data).execute()
@@ -134,12 +142,11 @@ class Database:
             update_data["description"] = description
             
         if meta is not None:
-            update_data.update({
-                "rows": meta["rows"],
-                "columns": meta["columns"],
-                "dtypes": meta["dtypes"],
-                "summary": meta["summary"]
-            })
+            # Ensure all expected meta fields are updated if meta is provided
+            if "rows" in meta: update_data["rows"] = meta["rows"]
+            if "columns" in meta: update_data["columns"] = meta["columns"]
+            if "dtypes" in meta: update_data["dtypes"] = meta["dtypes"]
+            if "summary" in meta: update_data["summary"] = meta["summary"]
             
         result = self.supabase.table("datasets")\
             .update(update_data)\
