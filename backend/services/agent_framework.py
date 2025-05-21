@@ -2,10 +2,11 @@ import pandas as pd
 import httpx
 import os
 from dotenv import load_dotenv
+import operator
 import asyncio
 import json
 import logging
-from typing import Dict, List, Any, TypedDict, Optional, Callable, Awaitable, AsyncGenerator
+from typing import Dict, List, Any, TypedDict, Optional, Callable, Awaitable, AsyncGenerator, Annotated
 from dataclasses import dataclass, field
 from datetime import datetime
 from ydata_profiling import ProfileReport
@@ -25,7 +26,7 @@ class AgentState(TypedDict):
     analysis_results: Optional[Dict[str, Any]]
     final_story: Optional[str]
     error: Optional[str]
-    history: List[Dict[str, Any]]  # Track all agent outputs
+    history: Annotated[List[Dict[str, Any]], operator.add]  # Track all agent outputs
     
 # Base Agent class for shared functionality
 class Agent:
@@ -403,11 +404,55 @@ class AnalystAgent(Agent):
                 # Extract results
                 results = local_vars.get("results", "No results found")
                 
+                # Save the figures to disk if they exist
+                image_paths = {}
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                figures_dir = "figures"
+                
+                # Create figures directory if it doesn't exist
+                os.makedirs(figures_dir, exist_ok=True)
+                
+                # Check if there are base64 encoded images in the results
+                if isinstance(results, dict):
+                    for key, value in results.items():
+                        if isinstance(value, str) and value.startswith('data:image') or key == 'plot':
+                            # Extract the base64 data
+                            base64_data = value
+                            if ',' in base64_data:
+                                base64_data = base64_data.split(',')[1]
+                            
+                            # Generate filename
+                            img_filename = f"{figures_dir}/{timestamp}_{key}.png"
+                            
+                            # Decode and save the image
+                            try:
+                                with open(img_filename, "wb") as img_file:
+                                    img_file.write(base64.b64decode(base64_data))
+                                image_paths[key] = img_filename
+                                print(f"Saved figure to {img_filename}")
+                            except Exception as e:
+                                logging.error(f"Error saving image {key}: {str(e)}")
+                
+                # Also save any open matplotlib figures
+                try:
+                    figures = [plt.figure(i) for i in plt.get_fignums()]
+                    for i, fig in enumerate(figures):
+                        fig_filename = f"{figures_dir}/{timestamp}_figure_{i}.png"
+                        fig.savefig(fig_filename)
+                        image_paths[f"figure_{i}"] = fig_filename
+                        print(f"Saved open figure to {fig_filename}")
+                except Exception as e:
+                    logging.error(f"Error saving open matplotlib figures: {str(e)}")
+                
+                # Close all figures to prevent memory leaks
+                plt.close('all')
+                
                 # Return analysis results
                 analysis_results = {
                     "insights": results,
                     "code": analysis_code,
-                    "status": "success"
+                    "status": "success",
+                    "saved_figures": image_paths
                 }
                 
                 return self.create_state_update("analysis_results", analysis_results, state)
@@ -501,7 +546,7 @@ class DataStoryAgent(Agent):
             payload = {
                 "model": "sonar",
                 "messages": [
-                    {"role": "system", "content": "You are an expert data analyst creating insightful data stories."},
+                    {"role": "system", "content": "You are an expert data analyst creating insightful data stories for someone who is relying on you for insights and analysis. Generate business value for the user."},
                     {"role": "user", "content": story_prompt}
                 ],
                 "response_format": {
@@ -573,8 +618,14 @@ def build_agent_graph() -> StateGraph:
     workflow.add_node("analysis", AnalystAgent("analysis").process)
     workflow.add_node("story", DataStoryAgent("story").process)
 
-    # workflow.add_node("start", lambda state: state)
+    workflow.add_node("start", lambda state: state)
     
+    workflow.add_edge("start", "research")
+    workflow.add_edge("start", "eda")
+
+    workflow.add_edge(["research", "eda"], "analysis")
+    workflow.add_edge("analysis", "story")
+
     # # Add conditional edges from start and between nodes
     # workflow.add_conditional_edges("start", planner)
     # workflow.add_conditional_edges("research", planner)
@@ -582,15 +633,8 @@ def build_agent_graph() -> StateGraph:
     # workflow.add_conditional_edges("analysis", planner)
     # workflow.add_conditional_edges("story", planner)
     
-    # # Set the entry point
-    # workflow.set_entry_point("start")
-
-    workflow.add_edge("research", "eda")
-    workflow.add_edge("eda", "analysis")
-    workflow.add_edge("analysis", "story")
-    
     # Set the entry point to the first node directly
-    workflow.set_entry_point("research")
+    workflow.set_entry_point("start")
     
     return workflow
 

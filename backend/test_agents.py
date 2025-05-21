@@ -87,24 +87,24 @@ async def test_agent_workflow():
     # Load environment variables (for API keys)
     load_dotenv()
     
-    # Create sample health tech financial data
-    df = create_health_tech_financial_data()
+    # Sample data
+    df = pd.read_csv("financial_data_sp500_companies.csv")
     
     # Create metadata
     dataset_metadata = {
-        "filename": "healthtech_financials_2022_2023.csv",
-        "s3_key": "test/healthtech_financials.csv",  # This doesn't need to exist
+        "filename": "financial_data_sp500_companies.csv",
+        "s3_key": "test/financial_data_sp500_companies.csv",  # This doesn't need to exist
         "sample_df": df,
         "columns": list(df.columns)
     }
     
     # Query to analyze
     query = """
-    Analyze the financial performance trends across different product lines, identify which areas 
-    are showing the strongest growth and profitability.
+    Analyze the data and spot the common trends and patterns across the firms in this dataset that 
+    has financial data for S&P companies in 2020 and 2021.
     """
     
-    print(f"Testing agent workflow with query about digital health company financials")
+    print(f"Testing agent workflow")
     print("Sample data:")
     print(df.head())
     print("=" * 80)

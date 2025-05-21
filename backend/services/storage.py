@@ -129,5 +129,30 @@ class S3Client:
             logging.error(f"Error generating presigned URL: {e}")
             raise Exception(f"Failed to generate presigned URL: {str(e)}")
 
+    async def put(self, key: str, content: bytes, content_type: str = 'text/csv') -> str:
+        """
+        Directly upload content to S3 with a specified key.
+        
+        Args:
+            key: The S3 key to use
+            content: The content to upload as bytes
+            content_type: The content type of the file
+            
+        Returns:
+            The S3 key of the uploaded file
+        """
+        try:
+            self.s3.put_object(
+                Bucket=self.bucket,
+                Key=key,
+                Body=content,
+                ContentType=content_type
+            )
+            
+            return key
+        except ClientError as e:
+            logging.error(f"Error uploading content to S3: {e}")
+            raise Exception(f"Failed to upload content: {str(e)}")
+
 # Create a singleton instance
 storage = S3Client() 

@@ -22,11 +22,21 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-2. Create a `.env` file with your API keys:
+2. Create a `.env` file with your API keys (use .env.template as a template):
 
 ```
-PERPLEXITY_API_KEY=your_perplexity_api_key
-S3_BUCKET=your_s3_bucket  # If using S3
+# API Keys
+PERPLEXITY_API_KEY=your_perplexity_api_key_here
+
+# AWS/S3 Configuration
+AWS_ACCESS_KEY_ID=your_aws_access_key_id_here
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key_here
+AWS_REGION=ap-southeast-1
+AWS_BUCKET_NAME=your_bucket_name_here
+
+# Supabase Configuration
+SUPABASE_URL=your_supabase_url_here
+SUPABASE_KEY=your_supabase_key_here
 ```
 
 ## Running the System
@@ -35,6 +45,15 @@ S3_BUCKET=your_s3_bucket  # If using S3
 
 ```bash
 uvicorn main:app --reload
+```
+
+### Docker
+
+Build and run using Docker:
+
+```bash
+docker build -t datamind-backend .
+docker run -p 8000:8000 --env-file .env datamind-backend
 ```
 
 ### Test Script
@@ -50,15 +69,17 @@ python test_agents.py
 - **GET /** - API information
 - **POST /analyze** - Direct file upload and analysis
 - **POST /api/chat/stream/{dataset_id}** - Chat with an existing dataset
+- **GET /figure/{figure_name}** - Retrieve a saved figure by name
 - **API /api/datasets/...** - Dataset management endpoints
 
 ## How It Works
 
 1. A user submits a query about a dataset
-2. The LangGraph workflow routes the query through all agents in sequence
-3. Each agent contributes its specialty to the analysis
-4. The final story agent creates a comprehensive narrative from all the results
+2. The Research and EDA agents run in parallel
+3. The Analyst agent then processes the combined results
+4. The Data Story agent creates a comprehensive narrative from all the results above
 5. Results are streamed back to the user in real-time
+6. Visualizations are saved and accessible via URLs
 
 ## Technologies Used
 
@@ -66,7 +87,9 @@ python test_agents.py
 - **LangGraph** - Agent orchestration
 - **Perplexity AI** - LLM for research and analysis
 - **pandas** - Data manipulation
-- **ydata-profiling** - Exploratory data analysis
+- **Supabase** - Database storage
+- **AWS S3** - File storage
+- **matplotlib/seaborn** - Data visualization
 
 ## Architecture Diagram
 
@@ -74,14 +97,21 @@ python test_agents.py
 ┌──────────────┐     ┌─────────────────┐     ┌────────────────┐
 │  API Layer   │────▶│ LangGraph State │────▶│ Agent Executor │
 └──────────────┘     └─────────────────┘     └────────────────┘
-                             │                       │
-                             ▼                       ▼
-┌──────────────────────────────────────────────────────────────┐
-│                                                              │
-│  ┌────────────┐  ┌─────────────┐  ┌───────────┐  ┌─────────┐ │
-│  │  Research  │  │     EDA     │  │  Analyst  │  │  Story  │ │
-│  │   Agent    │  │    Agent    │  │   Agent   │  │  Agent  │ │
-│  └────────────┘  └─────────────┘  └───────────┘  └─────────┘ │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
+       │                     │                       │
+       ▼                     ▼                       ▼
+┌──────────────┐  ┌──────────────────────────────────────────────┐
+│  Supabase DB │  │                                              │
+└──────────────┘  │  ┌────────────┐  ┌─────────────┐            │
+       ▲          │  │  Research  │  │     EDA     │            │
+       │          │  │   Agent    │  │    Agent    │            │
+┌──────────────┐  │  └────────────┘  └─────────────┘            │
+│   AWS S3     │  │         │              │                    │
+└──────────────┘  │         └──────┬───────┘                    │
+       ▲          │                ▼                            │
+       │          │         ┌───────────┐        ┌─────────┐    │
+       │          │         │  Analyst  │───────▶│  Story  │    │
+       └──────────┼─────────│   Agent   │        │  Agent  │    │
+                  │         └───────────┘        └─────────┘    │
+                  │                                             │
+                  └─────────────────────────────────────────────┘
 ``` 

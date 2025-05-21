@@ -10,6 +10,7 @@ import json
 import logging
 import asyncio
 from datetime import datetime
+import os
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -69,6 +70,26 @@ async def chat_with_existing_dataset(
                     if await request.is_disconnected():
                         logging.info(f"Client disconnected for dataset {dataset_id}, query: '{query}'. Stopping stream.")
                         break
+                        
+                    # If chunk contains saved_figures, add figure_urls to the response
+                    if "data: " in chunk:
+                        data = json.loads(chunk[6:])  # Remove "data: " prefix
+                        if "data" in data and "analysis_results" in data["data"] and "saved_figures" in data["data"]["analysis_results"]:
+                            # Add base URL for accessing the figures
+                            figures = data["data"]["analysis_results"]["saved_figures"]
+                            # Convert paths to URLs
+                            base_url = str(request.base_url)
+                            figure_urls = {}
+                            for key, path in figures.items():
+                                # Extract filename from path
+                                filename = os.path.basename(path)
+                                # Create absolute URL
+                                figure_urls[key] = f"{base_url}figure/{filename}"
+                            
+                            data["data"]["analysis_results"]["figure_urls"] = figure_urls
+                            # Re-serialize the modified data
+                            chunk = f"data: {json.dumps(data)}\n\n"
+                    
                     yield chunk
             except asyncio.CancelledError:
                 logging.info(f"Stream cancelled for dataset {dataset_id}, query: '{query}'.")

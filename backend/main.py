@@ -1,12 +1,14 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from api.chat import router as chat_router
 from api.datasets import router as datasets_router
 from services.agent_framework import execute_workflow
 from services import storage
 import uuid
 import io
+import os
 import pandas as pd
 import json
 import logging
@@ -26,9 +28,35 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Create figures directory if it doesn't exist
+os.makedirs("figures", exist_ok=True)
+
+# Mount figures directory as static files
+app.mount("/figures", StaticFiles(directory="figures"), name="figures")
+
 # Include routers
 app.include_router(chat_router, prefix="/api", tags=["chat"])
 app.include_router(datasets_router, prefix="/api", tags=["datasets"])
+
+@app.get("/figure/{figure_name}")
+async def get_figure(figure_name: str):
+    """
+    Get a figure from the figures directory.
+    
+    Args:
+        figure_name: The name of the figure file
+        
+    Returns:
+        The figure file
+        
+    Raises:
+        HTTPException: If the figure is not found
+    """
+    figure_path = f"figures/{figure_name}"
+    if not os.path.exists(figure_path):
+        raise HTTPException(status_code=404, detail="Figure not found")
+    
+    return FileResponse(figure_path)
 
 @app.get("/")
 async def root():
@@ -38,12 +66,14 @@ async def root():
         "endpoints": {
             "chat": "/api/chat",
             "datasets": "/api/datasets",
-            "analyze": "/analyze"
+            "analyze": "/analyze",
+            "figure": "/figure/{figure_name}"
         }
     }
 
 @app.post("/analyze")
 async def analyze(
+    request: Request,
     file: UploadFile = File(...), 
     query: str = Form(...)
 ):
@@ -75,6 +105,25 @@ async def analyze(
         async def event_generator():
             try:
                 async for chunk in execute_workflow(query, df_metadata):
+                    # If chunk contains saved_figures, add figure_urls to the response
+                    if "data: " in chunk:
+                        data = json.loads(chunk[6:])  # Remove "data: " prefix
+                        if "data" in data and "analysis_results" in data["data"] and "saved_figures" in data["data"]["analysis_results"]:
+                            # Add base URL for accessing the figures
+                            figures = data["data"]["analysis_results"]["saved_figures"]
+                            # Convert paths to URLs
+                            base_url = request.base_url
+                            figure_urls = {}
+                            for key, path in figures.items():
+                                # Extract filename from path
+                                filename = os.path.basename(path)
+                                # Create absolute URL
+                                figure_urls[key] = f"{base_url}figure/{filename}"
+                            
+                            data["data"]["analysis_results"]["figure_urls"] = figure_urls
+                            # Re-serialize the modified data
+                            chunk = f"data: {json.dumps(data)}\n\n"
+                    
                     yield chunk
             except Exception as e:
                 logging.error(f"Error during direct analysis streaming: {e}", exc_info=True)
