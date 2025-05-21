@@ -105,7 +105,12 @@ class ResearchAgent(Agent):
             columns = dataset.get("columns", [])
             
             # Craft research prompt
-            prompt = f"Research more context for the data analysis of following query about dataset '{filename}' with these columns: {columns}: {query}"
+            prompt = f"""Do background research for contextual information that will complement the analysis of the user query: "{query}" on dataset '{filename}' with these columns: {columns}
+            Please output a JSON with the following fields:
+            - summary: A comprehensive summary of the research findings
+            - sources: A list of sources or citations
+            - relevance: An explanation of relevance to the query
+            """
             
             # Call Perplexity API
             payload = {
@@ -305,8 +310,9 @@ class AnalystAgent(Agent):
             
             Your solution must:
             - Use pandas and numpy to analyze the dataframe named 'df'
-            - Create visualizations using matplotlib or seaborn
-            - Store visualizations as base64 strings
+            - Be careful when dealing with dates and times.
+            - Create a visualization using matplotlib or seaborn
+            - Store visualization as base64 strings
             - Create a 'results' dictionary with insights
             
             IMPORTANT: Be very careful with curly braces in f-strings. Use double curly braces {{ }} to escape them in the generated code.
@@ -345,7 +351,7 @@ class AnalystAgent(Agent):
             payload = {
                 "model": "sonar",
                 "messages": [
-                    {"role": "system", "content": "You are an expert data analyst who writes clean, efficient Python code. Generate only code, no explanations."},
+                    {"role": "system", "content": "You are an expert data analyst who understands the data and who writes clean, efficient Python code. Generate only code, no explanations."},
                     {"role": "user", "content": code_gen_prompt}
                 ]
             }
@@ -397,6 +403,16 @@ class AnalystAgent(Agent):
                     "io": python_io,
                     "base64": base64
                 }
+                
+                # Add safety code to handle date columns properly
+                try:
+                    # Check if "date" column exists
+                    if "date" in df.columns:
+                        # Convert date column to datetime properly
+                        local_vars["df"]["date"] = pd.to_datetime(df["date"], errors="coerce")
+
+                except Exception as prep_error:
+                    logging.warning(f"Error during dataframe preparation: {prep_error}")
                 
                 # Execute the code with a timeout
                 exec(analysis_code, {}, local_vars)

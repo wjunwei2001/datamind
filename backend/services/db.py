@@ -45,8 +45,8 @@ class Database:
             "description": description,
             "s3_key": s3_key,
             "filename": filename,
-            "created_at": created_at.isoformat(),
-            "updated_at": updated_at.isoformat()
+            "created_at": created_at,
+            "updated_at": updated_at
         }
         
         result = self.supabase.table("datasets").insert(data_to_insert).execute()
@@ -144,7 +144,7 @@ class Database:
             meta: Partial dictionary with metadata fields to update (e.g., rows, columns)
         """
         update_data = {
-            "updated_at": datetime.now(datetime.UTC).isoformat()
+            "updated_at": datetime.utcnow().isoformat()
         }
         
         if description is not None:

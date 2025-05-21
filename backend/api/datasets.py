@@ -22,8 +22,8 @@ class DatasetMeta(BaseModel):
 class DatasetOut(DatasetMeta):
     id: str = Field(..., description="Unique identifier of the dataset")
     description: Optional[str] = Field(None, description="Optional description of the dataset")
-    created_at: datetime = Field(default_factory=lambda: datetime.now(datetime.UTC), description="Timestamp of dataset creation")
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(datetime.UTC), description="Timestamp of last update")
+    created_at: datetime = Field(default_factory=lambda: datetime.utcnow().isoformat(), description="Timestamp of dataset creation")
+    updated_at: datetime = Field(default_factory=lambda: datetime.utcnow().isoformat(), description="Timestamp of last update")
     s3_key: str = Field(..., description="S3 key for the dataset file")
     filename: str = Field(..., description="Original filename of the dataset")
 
@@ -85,7 +85,7 @@ async def create_dataset(
 
         meta = await run_in_threadpool(sync_extract_metadata, file_content_bytes)
         
-        now = datetime.now(datetime.UTC)
+        now = datetime.utcnow().isoformat()
         db_payload = {
             **meta,
             "id": uid,
