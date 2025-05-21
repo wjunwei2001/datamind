@@ -27,7 +27,6 @@ export interface DatasetMetadata {
   columns: string[];
   row_count: number;
   preview: any[];
-  sample_data: string;
 }
 
 /**
@@ -72,15 +71,10 @@ export async function uploadFile(file: File, context: string) {
 /**
  * Send a message to the chat API
  */
-export async function sendMessage(datasetId: string, message: string, cachedDataset?: DatasetMetadata) {
+export async function sendMessage(datasetId: string, message: string) {
   // Create form data for the chat endpoint
   const formData = new FormData();
   formData.append('query', message);
-  
-  // Add cached dataset if available
-  if (cachedDataset) {
-    formData.append('cached_dataset', JSON.stringify(cachedDataset));
-  }
   
   const response = await fetch(`${API_URL}/api/chat/stream/${datasetId}`, {
     method: 'POST',
