@@ -1,7 +1,9 @@
 # DataMind 🧠
 
-**Chat with your data like never before**
 ![image](https://github.com/user-attachments/assets/2588ab34-fce5-47d4-8be1-4fc50239c61c)
+
+**Chat with your data like never before**
+
 
 DataMind is a sophisticated AI-powered data analysis platform that combines the power of multi-agent systems with an intuitive chat interface. Upload your datasets and have intelligent conversations to uncover insights, generate visualizations, and get comprehensive data stories.
 
